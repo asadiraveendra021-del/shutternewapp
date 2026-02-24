@@ -34,8 +34,8 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
       await client.login('asadiraveendra021@gmail.com', 'iiwq aetl lmsg kkfe');
       await client.selectInbox();
 
-      // Look for the 6-digit OTP
-      final fetchResult = await client.fetchRecentMessages(messageCount: 3, criteria: 'UNSEEN');
+      // This version is more compatible with Gmail's specific IMAP rules
+      final fetchResult = await client.fetchRecentMessages(messageCount: 5);
       if (fetchResult.messages.isNotEmpty) {
         final body = fetchResult.messages.first.decodeTextPlainPart() ?? "";
         final otpMatch = RegExp(r'\b\d{6}\b').firstMatch(body);
