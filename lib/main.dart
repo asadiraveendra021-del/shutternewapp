@@ -77,7 +77,7 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
           body: jsonEncode({'otp': foundOtp}),
         );
 
-        setState(() => status = "Success! Shutter $action Verified.");
+        setState(() => status = "Success! Shutter $action Verified with $foundOtp .");
       } else {
         setState(() => status = "Timeout: No OTP arrived after 2 minutes.");
       }
