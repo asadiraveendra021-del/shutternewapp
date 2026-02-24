@@ -17,35 +17,70 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
   bool isBusy = false;
 
   Future<void> triggerAction(String action) async {
-    setState(() { isBusy = true; status = "Starting $action..."; });
-    
-    try {
-      // 1. Call your API
-      final url = action == "ON" 
-          ? 'https://jsonplaceholder.typicode.com/posts' 
-          : 'https://jsonplaceholder.typicode.com/posts';
-          
-      await http.post(Uri.parse(url), body: jsonEncode({'action': action}));
-      
-      // 2. Check Email for OTP
-      setState(() => status = "Checking Gmail for OTP...");
-      final client = ImapClient(isLogEnabled: false);
-      await client.connectToServer('imap.gmail.com', 993, isSecure: true);
-      await client.login('asadiraveendra021@gmail.com', 'iiwq aetl lmsg kkfe');
-      await client.selectInbox();
+    setState(() {
+      isBusy = true;
+      status = "Starting $action...";
+    });
 
-      // This version is more compatible with Gmail's specific IMAP rules
-      final fetchResult = await client.fetchRecentMessages(messageCount: 5);
-      if (fetchResult.messages.isNotEmpty) {
-        final body = fetchResult.messages.first.decodeTextPlainPart() ?? "";
-        final otpMatch = RegExp(r'\b\d{6}\b').firstMatch(body);
-        if (otpMatch != null) {
-          setState(() => status = "Success! Found OTP: ${otpMatch.group(0)}");
-        } else {
-          setState(() => status = "Action sent, but no OTP found in email.");
+    try {
+      // 1. Initial API Call
+      await http.post(
+        Uri.parse('https://jsonplaceholder.typicode.com/posts'),
+        body: jsonEncode({'action': action}),
+      );
+
+      // 2. Start the Polling Loop (Wait up to 2 minutes)
+      String? foundOtp;
+      int attempts = 0;
+      const int maxAttempts = 12; // 12 * 10 seconds = 120 seconds total
+
+      while (attempts < maxAttempts && foundOtp == null) {
+        attempts++;
+        setState(() => status = "Checking Gmail (Attempt $attempts/$maxAttempts)...");
+
+        final client = ImapClient(isLogEnabled: false);
+        try {
+          await client.connectToServer('imap.gmail.com', 993, isSecure: true);
+          await client.login('asadiraveendra021@gmail.com', 'iiwq aetl lmsg kkfe');
+          await client.selectInbox();
+
+          // Fetch latest 5 messages
+          final fetchResult = await client.fetchRecentMessages(messageCount: 5);
+          for (final message in fetchResult.messages) {
+            final body = message.decodeTextPlainPart() ?? "";
+            
+            // ADJUSTED: This now looks for any number between 4 and 6 digits long
+            final otpMatch = RegExp(r'\b\d{4,6}\b').firstMatch(body);
+
+            if (otpMatch != null) {
+              foundOtp = otpMatch.group(0);
+              break;
+            }
+          }
+        } finally {
+          await client.logout();
+        }
+
+        if (foundOtp == null) {
+          // Wait 10 seconds before the next check
+          await Future.delayed(const Duration(seconds: 10));
         }
       }
-      await client.logout();
+
+      // 3. Final Result Handling
+      if (foundOtp != null) {
+        setState(() => status = "OTP Found: $foundOtp. Verifying...");
+
+        // Trigger Dummy Verify API
+        await http.post(
+          Uri.parse('https://jsonplaceholder.typicode.com/posts'),
+          body: jsonEncode({'otp': foundOtp}),
+        );
+
+        setState(() => status = "Success! Shutter $action Verified.");
+      } else {
+        setState(() => status = "Timeout: No OTP arrived after 2 minutes.");
+      }
     } catch (e) {
       setState(() => status = "Error: $e");
     } finally {
@@ -57,22 +92,38 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: AppBar(title: const Text("SHUTTER CONTROL"), backgroundColor: Colors.teal),
+      appBar: AppBar(
+        title: const Text("SHUTTER CONTROL"),
+        backgroundColor: Colors.teal,
+      ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(status, style: const TextStyle(color: Colors.white, fontSize: 18)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Text(
+                status,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ),
             const SizedBox(height: 40),
             ElevatedButton(
               onPressed: isBusy ? null : () => triggerAction("ON"),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green, minimumSize: const Size(200, 60)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                minimumSize: const Size(200, 60),
+              ),
               child: const Text("SHUTTER ON"),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: isBusy ? null : () => triggerAction("OFF"),
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, minimumSize: const Size(200, 60)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                minimumSize: const Size(200, 60),
+              ),
               child: const Text("SHUTTER OFF"),
             ),
           ],
