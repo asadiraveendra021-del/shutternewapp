@@ -113,8 +113,8 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildShutterButton("Open Shutter", "https://img.icons8.com/plasticine/200/window.png", "ON"),
-              _buildShutterButton("Close Shutter", "https://img.icons8.com/plasticine/200/blind.png", "OFF"),
+              _buildShutterButton("Open Shutter", "https://www.shutterstock.com/image-vector/half-open-garage-door-on-260nw-2473923275.jpg", "ON"),
+              _buildShutterButton("Close Shutter", "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRJCwI_HbX7_13gTATZH-64yhrRrKEmQxh51g&s", "OFF"),
             ],
           ),
           const SizedBox(height: 30),
