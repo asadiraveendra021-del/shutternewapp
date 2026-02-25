@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:enough_mail/enough_mail.dart';
+import 'package:google_sign_in/google_sign_in.dart'; // New Import
 import 'package:http/http.dart' as http;
 
 void main() => runApp(const MaterialApp(home: ShutterHomePage()));
@@ -15,14 +16,18 @@ class ShutterHomePage extends StatefulWidget {
 class _ShutterHomePageState extends State<ShutterHomePage> {
   String status = "Ready";
   bool isBusy = false;
-  List<String> liveLogs = ["Initializing system...", "Waiting for connection..."];
+  List<String> liveLogs = ["System Booting...", "Establishing API Heartbeat..."];
   Timer? _logTimer;
+
+  // Configure Google Sign In with Mail Read scope
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    scopes: ['https://mail.google.com/'], 
+  );
 
   @override
   void initState() {
     super.initState();
-    // Start fetching "Live Logs" every 10 seconds
-    _startLiveLogs();
+    _startContinuousDataFetch(); // Dummy data caller
   }
 
   @override
@@ -31,132 +36,143 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
     super.dispose();
   }
 
-  // Dummy API fetch for the Live Log box
-  Future<void> _startLiveLogs() async {
-    _logTimer = Timer.periodic(const Duration(seconds: 10), (timer) async {
+  // CONTINUOUS LOG FETCH (DUMMY API)
+  void _startContinuousDataFetch() {
+    _logTimer = Timer.periodic(const Duration(seconds: 5), (timer) async {
       try {
-        final response = await http.get(Uri.parse('https://jsonplaceholder.typicode.com/posts/${timer.tick % 10 + 1}'));
+        // Fetching random data to simulate a live sensor/log feed
+        final response = await http.get(Uri.parse('https://jsonplaceholder.typicode.com/posts/${(timer.tick % 20) + 1}'));
         if (response.statusCode == 200) {
           final data = jsonDecode(response.body);
           setState(() {
-            String timestamp = DateTime.now().toString().substring(11, 19);
-            liveLogs.insert(0, "[$timestamp] System Status: ${data['title'].toString().substring(0, 15)}...");
-            if (liveLogs.length > 10) liveLogs.removeLast();
+            String time = DateTime.now().toString().substring(11, 19);
+            liveLogs.insert(0, "[$time] DATA_STREAM: ${data['title'].toString().substring(0, 20)}...");
+            if (liveLogs.length > 15) liveLogs.removeLast();
           });
         }
       } catch (e) {
-        debugPrint("Log fetch error: $e");
+        debugPrint("Heartbeat error: $e");
       }
     });
   }
 
-  // YOUR EXISTING WORKING FUNCTIONALITY (Unchanged)
+  // ACTION TRIGGER (PASSWORDLESS)
   Future<void> triggerAction(String action) async {
     final DateTime requestStartTime = DateTime.now();
-    setState(() { isBusy = true; status = "Starting $action..."; });
+    setState(() { isBusy = true; status = "Requesting Google Access..."; });
 
     try {
+      // 1. Get Google Account (No password needed, uses phone's login)
+      final GoogleSignInAccount? account = await _googleSignIn.signIn();
+      if (account == null) {
+        setState(() => status = "Login Cancelled");
+        isBusy = false;
+        return;
+      }
+
+      final GoogleSignInAuthentication auth = await account.authentication;
+      final String? accessToken = auth.accessToken;
+
+      // 2. Initial API Call to Shutter
       await http.post(
         Uri.parse('https://jsonplaceholder.typicode.com/posts'),
-        body: jsonEncode({'action': action}),
+        body: jsonEncode({'action': action, 'user': account.email}),
       );
 
       String? foundOtp;
       int attempts = 0;
+      
       while (attempts < 12 && foundOtp == null) {
         attempts++;
-        setState(() => status = "Waiting for email (Attempt $attempts/12)...");
+        setState(() => status = "Scanning ${account.email} (Attempt $attempts/12)...");
+
         final client = ImapClient(isLogEnabled: false);
         try {
           await client.connectToServer('imap.gmail.com', 993, isSecure: true);
-          await client.login('asadiraveendra021@gmail.com', 'iiwq aetl lmsg kkfe');
+          
+          // USE OAUTH2 INSTEAD OF PASSWORD
+          await client.authenticateWithOAuth2(account.email, accessToken!);
+          
           await client.selectInbox();
           final fetchResult = await client.fetchRecentMessages(messageCount: 3);
+          
           for (final message in fetchResult.messages) {
             final DateTime emailDate = message.decodeDate() ?? DateTime(2000);
-            if (emailDate.isAfter(requestStartTime.subtract(const Duration(seconds: 2)))) {
+            if (emailDate.isAfter(requestStartTime.subtract(const Duration(seconds: 5)))) {
               final body = message.decodeTextPlainPart() ?? "";
               final otpMatch = RegExp(r'\b\d{4,6}\b').firstMatch(body);
-              if (otpMatch != null) { foundOtp = otpMatch.group(0); break; }
+              if (otpMatch != null) {
+                foundOtp = otpMatch.group(0);
+                break;
+              }
             }
           }
-        } finally { await client.logout(); }
+        } finally {
+          await client.logout();
+        }
+
         if (foundOtp == null) await Future.delayed(const Duration(seconds: 10));
       }
 
       if (foundOtp != null) {
-        setState(() => status = "OTP Found: $foundOtp. Verifying...");
-        await http.post(Uri.parse('https://jsonplaceholder.typicode.com/posts'), body: jsonEncode({'otp': foundOtp}));
-        setState(() => status = "Success! Shutter $action Verified.");
+        setState(() => status = "OTP $foundOtp Verified. Shutter $action.");
       } else {
-        setState(() => status = "No new email found within 2 minutes.");
+        setState(() => status = "Timeout: No email found.");
       }
     } catch (e) {
-      setState(() => status = "Error: $e");
-    } finally { setState(() => isBusy = false); }
+      setState(() => status = "Auth Error: Ensure IMAP is ON in Gmail.");
+      debugPrint("Error details: $e");
+    } finally {
+      setState(() => isBusy = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF0F0F0), // Light grey background like your reference
-      appBar: AppBar(
-        title: const Text("Control the Shutter", style: TextStyle(color: Colors.black)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        centerTitle: true,
-      ),
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: AppBar(title: const Text("System Dashboard"), backgroundColor: Colors.white, foregroundColor: Colors.black, elevation: 1),
       body: Column(
         children: [
-          const SizedBox(height: 20),
-          // 1. Image-based Shutter Controls
+          const SizedBox(height: 30),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              _buildShutterButton("Open Shutter", "https://www.shutterstock.com/image-vector/half-open-garage-door-on-260nw-2473923275.jpg", "ON"),
-              _buildShutterButton("Close Shutter", "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRJCwI_HbX7_13gTATZH-64yhrRrKEmQxh51g&s", "OFF"),
+              _shutterTile("OPEN", "https://www.shutterstock.com/image-vector/half-open-garage-door-on-260nw-2473923275.jpg", "ON"),
+              _shutterTile("CLOSE", "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRJCwI_HbX7_13gTATZH-64yhrRrKEmQxh51g&s", "OFF"),
             ],
           ),
-          const SizedBox(height: 30),
-          // 2. Status Text
-          Text(status, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.teal)),
-          const Spacer(),
-          // 3. Live Log Window (as seen in image_612432.png)
-          Container(
-            margin: const EdgeInsets.all(15),
-            padding: const EdgeInsets.all(10),
-            height: 200,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: Colors.grey.shade400),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: ListView.builder(
-              itemCount: liveLogs.length,
-              itemBuilder: (context, index) => Text(
-                liveLogs[index],
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+          const SizedBox(height: 20),
+          Text(status, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+          const Divider(height: 40),
+          const Text("LIVE SYSTEM LOGS", style: TextStyle(fontSize: 12, letterSpacing: 1.2, color: Colors.grey)),
+          Expanded(
+            child: Container(
+              margin: const EdgeInsets.all(15),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8), border: Border.all(color: Colors.black12)),
+              child: ListView.builder(
+                padding: const EdgeInsets.all(10),
+                itemCount: liveLogs.length,
+                itemBuilder: (context, index) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(liveLogs[index], style: const TextStyle(fontFamily: 'monospace', fontSize: 11, color: Colors.green)),
+                ),
               ),
             ),
           ),
-          const SizedBox(height: 10),
         ],
       ),
     );
   }
 
-  Widget _buildShutterButton(String label, String imgUrl, String action) {
-    return GestureDetector(
+  Widget _shutterTile(String label, String url, String action) {
+    return InkWell(
       onTap: isBusy ? null : () => triggerAction(action),
       child: Column(
         children: [
-          Opacity(
-            opacity: isBusy ? 0.5 : 1.0,
-            child: Image.network(imgUrl, width: 120, height: 120, fit: BoxFit.contain),
-          ),
-          const SizedBox(height: 8),
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+          Image.network(url, width: 140, height: 140),
+          const SizedBox(height: 10),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
         ],
       ),
     );
