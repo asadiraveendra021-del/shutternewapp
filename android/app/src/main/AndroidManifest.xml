@@ -28,13 +28,13 @@
             </intent-filter>
         </activity>
 
-        <service
-    android:name="com.example.notification_listener_service.NotificationListener"
+      <service
+    android:name="com.github.chagall.notification_listener_service.NotificationListener"
     android:label="Notification Listener"
     android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
     android:exported="true">
     <intent-filter>
-        <action android:name="android.service.notification.NotificationListenerService" />
+        <action android:name="android.service.notification.NotificationListenerService"/>
     </intent-filter>
 </service>
         <!-- Don't delete the meta-data below.
