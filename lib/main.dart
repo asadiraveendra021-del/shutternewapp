@@ -56,16 +56,20 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
     });
   }
 
-  // ACTION TRIGGER (PASSWORDLESS)
   Future<void> triggerAction(String action) async {
+    const String targetEmail = 'asadiraveendra021@gmail.com'; // Fixed Static Email
     final DateTime requestStartTime = DateTime.now();
-    setState(() { isBusy = true; status = "Requesting Google Access..."; });
+    
+    setState(() { isBusy = true; status = "Connecting to $targetEmail..."; });
 
     try {
-      // 1. Get Google Account (No password needed, uses phone's login)
+      // 1. Authenticate (This pop-up only happens once)
       final GoogleSignInAccount? account = await _googleSignIn.signIn();
-      if (account == null) {
-        setState(() => status = "Login Cancelled");
+      
+      // Safety Check: Ensure the user logged into the CORRECT static email
+      if (account == null || account.email != targetEmail) {
+        setState(() => status = "Error: Please login as $targetEmail");
+        await _googleSignIn.signOut(); // Force logout if it's the wrong account
         isBusy = false;
         return;
       }
@@ -73,25 +77,25 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
       final GoogleSignInAuthentication auth = await account.authentication;
       final String? accessToken = auth.accessToken;
 
-      // 2. Initial API Call to Shutter
+      // 2. Your API Call
       await http.post(
         Uri.parse('https://jsonplaceholder.typicode.com/posts'),
-        body: jsonEncode({'action': action, 'user': account.email}),
+        body: jsonEncode({'action': action, 'email': targetEmail}),
       );
 
+      // 3. The Search Loop (Same as your working version)
       String? foundOtp;
       int attempts = 0;
-      
       while (attempts < 12 && foundOtp == null) {
         attempts++;
-        setState(() => status = "Scanning ${account.email} (Attempt $attempts/12)...");
+        setState(() => status = "Scanning Inbox (Attempt $attempts/12)...");
 
         final client = ImapClient(isLogEnabled: false);
         try {
           await client.connectToServer('imap.gmail.com', 993, isSecure: true);
           
-          // USE OAUTH2 INSTEAD OF PASSWORD
-          await client.authenticateWithOAuth2(account.email, accessToken!);
+          // Authenticate using the Token instead of Password
+          await client.authenticateWithOAuth2(targetEmail, accessToken!);
           
           await client.selectInbox();
           final fetchResult = await client.fetchRecentMessages(messageCount: 3);
@@ -110,18 +114,16 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
         } finally {
           await client.logout();
         }
-
         if (foundOtp == null) await Future.delayed(const Duration(seconds: 10));
       }
 
       if (foundOtp != null) {
-        setState(() => status = "OTP $foundOtp Verified. Shutter $action.");
+        setState(() => status = "OTP $foundOtp Found! Shutter $action.");
       } else {
-        setState(() => status = "Timeout: No email found.");
+        setState(() => status = "Timeout: No new OTP found.");
       }
     } catch (e) {
-      setState(() => status = "Auth Error: Ensure IMAP is ON in Gmail.");
-      debugPrint("Error details: $e");
+      setState(() => status = "Auth Error: Check IMAP settings.");
     } finally {
       setState(() => isBusy = false);
     }
