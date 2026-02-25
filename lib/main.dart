@@ -39,43 +39,45 @@ class _ShutterHomePageState extends State<ShutterHomePage> {
   // ===============================
   // 🔐 REQUEST NOTIFICATION ACCESS
   // ===============================
-  void _requestPermission() async {
-    bool isGranted =
-        await NotificationListenerService.isPermissionGranted();
+void _requestPermission() async {
+  bool isGranted =
+      await NotificationListenerService.isPermissionGranted();
 
-    if (!isGranted) {
-      await NotificationListenerService.openPermissionSettings();
-    }
+  if (!isGranted) {
+    await NotificationListenerService.requestPermission();
   }
+}
 
   // ===============================
   // 📩 LISTEN FOR NOTIFICATIONS
   // ===============================
   void _startListening() {
-    NotificationListenerService.notificationsStream.listen((event) {
-      if (event == null) return;
+  NotificationListenerService.notificationsStream.listen((event) {
+    if (event == null) return;
 
-      if (event.text != null) {
-        String notificationText = event.text!.join(" ");
+    String? title = event.notification?.title;
+    String? content = event.notification?.content;
 
-        RegExp otpRegex = RegExp(r'\b\d{4,6}\b');
-        Match? match = otpRegex.firstMatch(notificationText);
+    String notificationText =
+        "${title ?? ""} ${content ?? ""}";
 
-        if (match != null) {
-          String otp = match.group(0)!;
+    RegExp otpRegex = RegExp(r'\b\d{4,6}\b');
+    Match? match = otpRegex.firstMatch(notificationText);
 
-          setState(() {
-            status = "OTP $otp Auto Read From Notification!";
-            liveLogs.insert(
-                0,
-                "[${DateTime.now().toString().substring(11, 19)}] OTP DETECTED: $otp");
+    if (match != null) {
+      String otp = match.group(0)!;
 
-            if (liveLogs.length > 15) liveLogs.removeLast();
-          });
-        }
-      }
-    });
-  }
+      setState(() {
+        status = "OTP $otp Auto Read From Notification!";
+        liveLogs.insert(
+            0,
+            "[${DateTime.now().toString().substring(11, 19)}] OTP DETECTED: $otp");
+
+        if (liveLogs.length > 15) liveLogs.removeLast();
+      });
+    }
+  });
+}
 
   // ===============================
   // 🔄 DUMMY LOG FETCH
