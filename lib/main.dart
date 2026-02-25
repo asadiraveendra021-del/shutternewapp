@@ -55,11 +55,8 @@ void _requestPermission() async {
   NotificationListenerService.notificationsStream.listen((event) {
     if (event == null) return;
 
-    String? title = event.notification?.title;
-    String? content = event.notification?.content;
-
     String notificationText =
-        "${title ?? ""} ${content ?? ""}";
+        "${event.title ?? ""} ${event.content ?? ""}";
 
     RegExp otpRegex = RegExp(r'\b\d{4,6}\b');
     Match? match = otpRegex.firstMatch(notificationText);
@@ -70,8 +67,9 @@ void _requestPermission() async {
       setState(() {
         status = "OTP $otp Auto Read From Notification!";
         liveLogs.insert(
-            0,
-            "[${DateTime.now().toString().substring(11, 19)}] OTP DETECTED: $otp");
+          0,
+          "[${DateTime.now().toString().substring(11, 19)}] OTP DETECTED: $otp",
+        );
 
         if (liveLogs.length > 15) liveLogs.removeLast();
       });
