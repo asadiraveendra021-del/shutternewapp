@@ -7,9 +7,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  enough_mail: ^2.1.7
   http: ^1.1.0
-  google_sign_in: ^6.1.0
+  notification_listener_service: ^0.3.3
 
 dev_dependencies:
   flutter_test:
